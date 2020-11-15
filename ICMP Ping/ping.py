@@ -14,7 +14,7 @@ def checksum(str):
 
     count = 0
     while count < countTo:
-        thisVal = ord(str[count+1]) * 256 + ord(str[count])
+        thisVal = str[count+1] * 256 + str[count]
         csum = csum + thisVal
         csum = csum & 0xffffffff
         count = count + 2
@@ -44,9 +44,14 @@ def receiveOnePing(mySocket, ID, timeout, destAddr):
         timeReceived = time.time()
         recPacket, addr = mySocket.recvfrom(1024)
 
-        #Fill in start
-
-        #Fetch the ICMP header from the IP packet
+        # Fill in start
+        
+        # Fetch the ICMP header from the IP packet
+        type, code, checksum, packetID, seq = struct.unpack('bbHHh', recPacket[20:28])
+        if type != 8 and packetID == ID:
+            doubleBytes = struct.calcsize("d")
+            sentTime = struct.unpack("d", recPacket[28:28 + doubleBytes])[0]
+            return timeReceived - sentTime
 
         #Fill in end
 
@@ -58,36 +63,42 @@ def receiveOnePing(mySocket, ID, timeout, destAddr):
 def sendOnePing(mySocket, destAddr, ID):
     # Header is type (8), code (8), checksum (16), id (16), sequence (16)
 
-    myChecksum = 0
     # Make a dummy header with a 0 checksum.
+    myChecksum = 0
+    
     # struct -- Interpret strings as packed binary data
     header = struct.pack("bbHHh", ICMP_ECHO_REQUEST, 0, myChecksum, ID, 1)
     data = struct.pack("d", time.time())
+    
     # Calculate the checksum on the data and the dummy header.
     myChecksum = checksum(header + data)
 
     # Get the right checksum, and put in the header
     if sys.platform == 'darwin':
-        myChecksum = socket.htons(myChecksum) & 0xffff
-        #Convert 16-bit integers from host to network byte order.
+        myChecksum = htons(myChecksum) & 0xffff
+    
+    #Convert 16-bit integers from host to network byte order.
     else:
-        myChecksum = socket.htons(myChecksum)
+        myChecksum = htons(myChecksum)
 
     header = struct.pack("bbHHh", ICMP_ECHO_REQUEST, 0, myChecksum, ID, 1)
     packet = header + data
 
     mySocket.sendto(packet, (destAddr, 1)) # AF_INET address must be tuple, not str
-    #Both LISTS and TUPLES consist of a number of objects
-    #which can be referenced by their position number within the object
+    # Both LISTS and TUPLES consist of a number of objects
+    # which can be referenced by their position number within the object
     
     
 def doOnePing(destAddr, timeout):
-    icmp = socket.getprotobyname("icmp")
+    icmp = getprotobyname("icmp")
+    
     #SOCK_RAW is a powerful socket type. For more details see: http://sock-raw.org/papers/sock_raw
     #Fill in start
     #Create Socket here
+    mySocket = socket(AF_INET, SOCK_RAW, icmp)
     #Fill in end
-    myID = os.getpid() & 0xFFFF #Return the current process i
+    
+    myID = os.getpid() & 0xFFFF # Return the current process i
     sendOnePing(mySocket, destAddr, myID)
     delay = receiveOnePing(mySocket, myID, timeout, destAddr)
 
@@ -98,9 +109,10 @@ def doOnePing(destAddr, timeout):
 def ping(host, timeout=1):
     #timeout=1 means: If one second goes by without a reply from the server,
     #the client assumes that either the client’s ping or the server’s pong is lost
-    dest = socket.gethostbyname(host)
+    dest = gethostbyname(host)
     print ("Pinging " + dest + " using Python:")
     print ("")
+    print ("Delay times:")
     #Send ping requests to a server separated by approximately one second
     while 1 :
         delay = doOnePing(dest, timeout)
@@ -108,4 +120,4 @@ def ping(host, timeout=1):
         time.sleep(1) # one second
     return delay
 
-ping("www.poly.edu")
+ping("www.google.com")
